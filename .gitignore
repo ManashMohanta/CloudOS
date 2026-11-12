@@ -5,3 +5,4 @@ __pycache__/
 .env
 *.log
 .idea/
+backend/agent/system_info.json

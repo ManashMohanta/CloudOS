@@ -2,8 +2,11 @@ import os
 import platform
 import socket
 import shutil
+import json
+from pathlib import Path
 
 
+# Read RAM information from Linux
 def read_memory_info():
     memory = {}
 
@@ -18,11 +21,14 @@ def read_memory_info():
     return round(total, 2), round(available, 2)
 
 
+# Collect system information
 def get_system_info():
+
     total_ram, available_ram = read_memory_info()
+
     disk = shutil.disk_usage("/")
 
-    return {
+    system_info = {
         "hostname": socket.gethostname(),
         "os": platform.system(),
         "platform": platform.platform(),
@@ -34,9 +40,36 @@ def get_system_info():
         "free_disk_gb": round(disk.free / (1024 ** 3), 2)
     }
 
+    return system_info
 
+
+# Read saved system information
+def load_system_info(file_path):
+
+    with open(file_path, "r", encoding="utf-8") as file:
+        data = json.load(file)
+
+    return data
+
+
+# Main program
 if __name__ == "__main__":
+
     system = get_system_info()
 
-    for key, value in system.items():
-        print(f"{key}: {value}")
+    output_file = Path(__file__).with_name("system_info.json")
+
+    # Save system information
+    with output_file.open("w", encoding="utf-8") as file:
+        json.dump(system, file, indent=4)
+
+    print("System information saved successfully!")
+    print(f"File location: {output_file}")
+
+    # Read saved information
+    saved_data = load_system_info(output_file)
+
+    print("\nVerified System Information:")
+    print("Hostname:", saved_data["hostname"])
+    print("Operating System:", saved_data["os"])
+    print("CPU Cores:", saved_data["cpu_cores"])
