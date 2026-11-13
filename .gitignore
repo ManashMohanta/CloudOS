@@ -6,3 +6,6 @@ __pycache__/
 *.log
 .idea/
 backend/agent/system_info.json
+
+# Django database
+*.sqlite3
