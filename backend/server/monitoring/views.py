@@ -1,3 +1,4 @@
+
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.agent.system_info import get_system_info
+from backend.agent.metrics import GetSystemMetrics
 
 
 @api_view(['GET'])
@@ -16,3 +18,10 @@ from backend.agent.system_info import get_system_info
 def SystemInfo(request):
     system_data = get_system_info()
     return Response(system_data)
+
+
+@api_view(['GET'])
+@renderer_classes([JSONRenderer])
+def SystemMetrics(request):
+    metrics_data = GetSystemMetrics()
+    return Response(metrics_data)
