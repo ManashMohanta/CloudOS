@@ -19,7 +19,9 @@ import {
   CircleAlert,
   ArrowUpRight,
   ArrowDownRight,
-  Menu,
+  Plus,
+  Trash2,
+  X,
 } from 'lucide-react'
 
 import {
@@ -38,17 +40,30 @@ import './App.css'
 function App() {
 
   const [metrics, setMetrics] = useState(null)
-
   const [history, setHistory] = useState([])
-
   const [loading, setLoading] = useState(true)
-
   const [error, setError] = useState(false)
 
   const [activePage, setActivePage] = useState('Overview')
 
+  // Server Management States
+  const [servers, setServers] = useState([])
+  const [serverLoading, setServerLoading] = useState(false)
+  const [serverError, setServerError] = useState('')
 
-  // Fetch metrics from Django API
+  const [showForm, setShowForm] = useState(false)
+
+  const [selectedServer, setSelectedServer] = useState(null)
+
+  const [formData, setFormData] = useState({
+    name: '',
+    host: '',
+    port: 22,
+    environment: 'Development',
+  })
+
+
+  // Fetch System Metrics
   async function FetchMetrics() {
 
     try {
@@ -56,13 +71,12 @@ function App() {
       const response = await fetch('/api/metrics/')
 
       if (!response.ok) {
-        throw new Error('API request failed')
+        throw new Error('Metrics API request failed')
       }
 
       const data = await response.json()
 
       setMetrics(data)
-
       setError(false)
 
       setHistory(previous => {
@@ -80,7 +94,6 @@ function App() {
     } catch (err) {
 
       console.error('Metrics API error:', err)
-
       setError(true)
 
     } finally {
@@ -92,7 +105,39 @@ function App() {
   }
 
 
-  // Automatically refresh metrics every 5 seconds
+  // Fetch Registered Servers
+  async function FetchServers() {
+
+    setServerLoading(true)
+    setServerError('')
+
+    try {
+
+      const response = await fetch('/api/servers/')
+
+      if (!response.ok) {
+        throw new Error('Unable to fetch servers')
+      }
+
+      const data = await response.json()
+
+      setServers(data)
+
+    } catch (err) {
+
+      console.error('Server API error:', err)
+      setServerError('Unable to load servers. Check Django backend.')
+
+    } finally {
+
+      setServerLoading(false)
+
+    }
+
+  }
+
+
+  // Automatically Refresh Metrics
   useEffect(() => {
 
     FetchMetrics()
@@ -104,14 +149,128 @@ function App() {
   }, [])
 
 
+  // Fetch Servers When Servers Page Opens
+  useEffect(() => {
+
+    if (activePage === 'Servers') {
+      FetchServers()
+    }
+
+  }, [activePage])
+
+
+  // Handle Form Input
+  function HandleInput(event) {
+
+    const { name, value } = event.target
+
+    setFormData(previous => ({
+      ...previous,
+      [name]: value,
+    }))
+
+  }
+
+
+  // Register New Server
+  async function AddServer(event) {
+
+    event.preventDefault()
+
+    setServerError('')
+
+    try {
+
+      const response = await fetch('/api/servers/', {
+
+        method: 'POST',
+
+        headers: {
+          'Content-Type': 'application/json',
+        },
+
+        body: JSON.stringify({
+          ...formData,
+          port: Number(formData.port),
+        }),
+
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+
+        throw new Error(JSON.stringify(data))
+
+      }
+
+      setServers(previous => [data, ...previous])
+
+      setFormData({
+        name: '',
+        host: '',
+        port: 22,
+        environment: 'Development',
+      })
+
+      setShowForm(false)
+
+    } catch (err) {
+
+      console.error('Server registration error:', err)
+
+      setServerError('Server registration failed. Check the entered details.')
+
+    }
+
+  }
+
+
+  // Delete Server
+  async function DeleteServer(id) {
+
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this server?'
+    )
+
+    if (!confirmed) return
+
+    try {
+
+      const response = await fetch(`/api/servers/${id}/`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Delete request failed')
+      }
+
+      setServers(previous =>
+        previous.filter(server => server.id !== id)
+      )
+
+      if (selectedServer?.id === id) {
+        setSelectedServer(null)
+      }
+
+    } catch (err) {
+
+      console.error('Delete server error:', err)
+
+      setServerError('Unable to delete server.')
+
+    }
+
+  }
+
+
+  // Format Uptime
   const formatUptime = (seconds) => {
 
     if (seconds === undefined) return '--'
 
     const days = Math.floor(seconds / 86400)
-
     const hours = Math.floor((seconds % 86400) / 3600)
-
     const minutes = Math.floor((seconds % 3600) / 60)
 
     return `${days}d ${hours}h ${minutes}m`
@@ -119,6 +278,7 @@ function App() {
   }
 
 
+  // Statistics Card
   const StatCard = ({
     title,
     value,
@@ -232,8 +392,8 @@ function App() {
             <div className="profile-avatar">M</div>
 
             <div>
-              <h4>Manash</h4>
-              <span>Administrator</span>
+              <h4>Administrator</h4>
+              <span>CloudOS User</span>
             </div>
 
           </div>
@@ -275,364 +435,766 @@ function App() {
 
         <section className="content">
 
-          <div className="page-heading">
 
-            <div>
-              <p className="eyebrow">CLOUD INFRASTRUCTURE</p>
+          {/* SERVERS MANAGEMENT PAGE */}
 
-              <h1>{activePage}</h1>
+          {activePage === 'Servers' ? (
 
-              <p className="page-subtitle">
-                Monitor and manage your infrastructure from one place.
-              </p>
-            </div>
+            <>
 
-            <button
-              className="refresh-button"
-              onClick={FetchMetrics}
-            >
-              <RefreshCw size={16} />
-              Refresh
-            </button>
+              <div className="page-heading">
 
-          </div>
+                <div>
+                  <p className="eyebrow">CLOUD INFRASTRUCTURE</p>
 
+                  <h1>Server Management</h1>
 
-          {/* Server Status */}
+                  <p className="page-subtitle">
+                    Register and manage your infrastructure servers.
+                  </p>
+                </div>
 
-          <div className="server-status-card">
+                <button
+                  className="add-server-button"
+                  onClick={() => setShowForm(true)}
+                >
+                  <Plus size={17} />
+                  Add Server
+                </button>
 
-            <div className="server-status-left">
-
-              <div className="server-icon">
-                <Server size={23} />
               </div>
 
-              <div>
-                <h3>Ubuntu Server</h3>
-                <p>Local development environment</p>
+
+              {/* Server Summary */}
+
+              <div className="server-summary">
+
+                <div className="summary-icon">
+                  <Server size={23} />
+                </div>
+
+                <div>
+                  <h2>{servers.length}</h2>
+                  <p>Registered Servers</p>
+                </div>
+
               </div>
 
-            </div>
 
-            <div className="server-status-right">
+              {/* Error Message */}
 
-              <span className={`status-badge ${error ? 'offline' : ''}`}>
+              {serverError && (
 
-                {error ? (
-                  <CircleAlert size={13} />
+                <div className="error-message">
+                  {serverError}
+                </div>
+
+              )}
+
+
+              {/* Add Server Form */}
+
+              {showForm && (
+
+                <div className="server-form-card">
+
+                  <div className="form-heading">
+
+                    <div>
+                      <h2>Register New Server</h2>
+                      <p>Enter the server information below.</p>
+                    </div>
+
+                    <button
+                      className="close-form-button"
+                      onClick={() => setShowForm(false)}
+                    >
+                      <X size={20} />
+                    </button>
+
+                  </div>
+
+
+                  <form onSubmit={AddServer}>
+
+                    <div className="form-grid">
+
+                      <div className="form-group">
+
+                        <label>Server Name</label>
+
+                        <input
+                          type="text"
+                          name="name"
+                          placeholder="Example: Ubuntu Server"
+                          value={formData.name}
+                          onChange={HandleInput}
+                          required
+                        />
+
+                      </div>
+
+
+                      <div className="form-group">
+
+                        <label>IP Address / Hostname</label>
+
+                        <input
+                          type="text"
+                          name="host"
+                          placeholder="Example: 192.168.1.10"
+                          value={formData.host}
+                          onChange={HandleInput}
+                          required
+                        />
+
+                      </div>
+
+
+                      <div className="form-group">
+
+                        <label>Port Number</label>
+
+                        <input
+                          type="number"
+                          name="port"
+                          min="1"
+                          max="65535"
+                          value={formData.port}
+                          onChange={HandleInput}
+                          required
+                        />
+
+                      </div>
+
+
+                      <div className="form-group">
+
+                        <label>Environment</label>
+
+                        <select
+                          name="environment"
+                          value={formData.environment}
+                          onChange={HandleInput}
+                        >
+
+                          <option value="Development">Development</option>
+                          <option value="Staging">Staging</option>
+                          <option value="Production">Production</option>
+
+                        </select>
+
+                      </div>
+
+                    </div>
+
+
+                    <div className="form-actions">
+
+                      <button
+                        type="button"
+                        className="cancel-button"
+                        onClick={() => setShowForm(false)}
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="submit"
+                        className="submit-server-button"
+                      >
+                        Register Server
+                      </button>
+
+                    </div>
+
+                  </form>
+
+                </div>
+
+              )}
+
+
+              {/* Registered Servers Table */}
+
+              <div className="servers-table-card">
+
+                <div className="table-heading">
+
+                  <div>
+                    <h2>Registered Servers</h2>
+                    <p>Server inventory stored in CloudOS.</p>
+                  </div>
+
+                  <button
+                    className="table-refresh-button"
+                    onClick={FetchServers}
+                  >
+                    <RefreshCw size={15} />
+                    Refresh
+                  </button>
+
+                </div>
+
+
+                {serverLoading ? (
+
+                  <div className="empty-state">
+                    Loading servers...
+                  </div>
+
+                ) : servers.length === 0 ? (
+
+                  <div className="empty-state">
+                    <Server size={35} />
+
+                    <h3>No Servers Registered</h3>
+
+                    <p>Add your first server to CloudOS.</p>
+                  </div>
+
                 ) : (
-                  <CircleCheck size={13} />
+
+                  <div className="table-wrapper">
+
+                    <table className="servers-table">
+
+                      <thead>
+
+                        <tr>
+                          <th>SERVER</th>
+                          <th>HOST</th>
+                          <th>PORT</th>
+                          <th>ENVIRONMENT</th>
+                          <th>STATUS</th>
+                          <th>ACTIONS</th>
+                        </tr>
+
+                      </thead>
+
+
+                      <tbody>
+
+                        {servers.map(server => (
+
+                          <tr key={server.id}>
+
+                            <td>
+                              <div className="server-name-cell">
+                                <Server size={17} />
+                                <strong>{server.name}</strong>
+                              </div>
+                            </td>
+
+                            <td>{server.host}</td>
+
+                            <td>{server.port}</td>
+
+                            <td>
+                              <span className="environment-badge">
+                                {server.environment}
+                              </span>
+                            </td>
+
+                            <td>
+                              <span className="registered-badge">
+                                <CircleCheck size={13} />
+                                Registered
+                              </span>
+                            </td>
+
+                            <td>
+
+                              <div className="server-actions">
+
+                                <button
+                                  className="view-server-button"
+                                  onClick={() => setSelectedServer(server)}
+                                >
+                                  Details
+                                </button>
+
+                                <button
+                                  className="delete-server-button"
+                                  onClick={() => DeleteServer(server.id)}
+                                  title="Delete Server"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+
+                              </div>
+
+                            </td>
+
+                          </tr>
+
+                        ))}
+
+                      </tbody>
+
+                    </table>
+
+                  </div>
+
                 )}
 
-                {loading ? 'Connecting...' : error ? 'Disconnected' : 'Connected'}
-
-              </span>
-
-              <span className="server-address">
-                127.0.0.1:8000
-              </span>
-
-            </div>
-
-          </div>
+              </div>
 
 
-          {/* Statistics */}
+              {/* Server Details */}
 
-          <div className="section-heading">
+              {selectedServer && (
 
-            <div>
-              <h2>Server Overview</h2>
-              <p>Current resource utilization</p>
-            </div>
+                <div className="server-details-card">
 
-            <span className="live-indicator">
-              <span></span>
-              LIVE MONITORING
-            </span>
+                  <div className="form-heading">
 
-          </div>
+                    <div>
+                      <h2>Server Details</h2>
+                      <p>Registered server information.</p>
+                    </div>
+
+                    <button
+                      className="close-form-button"
+                      onClick={() => setSelectedServer(null)}
+                    >
+                      <X size={20} />
+                    </button>
+
+                  </div>
+
+                  <div className="details-grid">
+
+                    <div>
+                      <span>Server ID</span>
+                      <strong>{selectedServer.id}</strong>
+                    </div>
+
+                    <div>
+                      <span>Server Name</span>
+                      <strong>{selectedServer.name}</strong>
+                    </div>
+
+                    <div>
+                      <span>Host</span>
+                      <strong>{selectedServer.host}</strong>
+                    </div>
+
+                    <div>
+                      <span>Port</span>
+                      <strong>{selectedServer.port}</strong>
+                    </div>
+
+                    <div>
+                      <span>Environment</span>
+                      <strong>{selectedServer.environment}</strong>
+                    </div>
+
+                    <div>
+                      <span>Registered At</span>
+                      <strong>
+                        {new Date(selectedServer.created_at).toLocaleString()}
+                      </strong>
+                    </div>
+
+                  </div>
+
+                </div>
+
+              )}
+
+            </>
 
 
-          <div className="stats-grid">
+          ) : activePage === 'Overview' ? (
 
-            <StatCard
-              title="CPU Usage"
-              value={metrics ? metrics.cpu_usage : '--'}
-              unit="%"
-              icon={Cpu}
-              description="Processor utilization"
-              color="purple"
-            />
+            <>
 
-            <StatCard
-              title="Memory Usage"
-              value={metrics ? metrics.memory.usage_percent : '--'}
-              unit="%"
-              icon={Activity}
-              description={
-                metrics
-                  ? `${metrics.memory.used_gb} GB / ${metrics.memory.total_gb} GB`
-                  : 'Waiting for data'
-              }
-              color="blue"
-            />
-
-            <StatCard
-              title="Disk Usage"
-              value={metrics ? metrics.disk.usage_percent : '--'}
-              unit="%"
-              icon={HardDrive}
-              description={
-                metrics
-                  ? `${metrics.disk.free_gb} GB free`
-                  : 'Waiting for data'
-              }
-              color="orange"
-            />
-
-            <StatCard
-              title="System Uptime"
-              value={metrics ? formatUptime(metrics.uptime.uptime_seconds) : '--'}
-              unit=""
-              icon={Clock}
-              description="Server running time"
-              color="green"
-            />
-
-          </div>
-
-
-          {/* Charts */}
-
-          <div className="charts-grid">
-
-            <div className="chart-card">
-
-              <div className="chart-header">
+              <div className="page-heading">
 
                 <div>
-                  <h3>CPU Performance</h3>
-                  <p>Recent processor utilization</p>
+                  <p className="eyebrow">CLOUD INFRASTRUCTURE</p>
+
+                  <h1>Overview</h1>
+
+                  <p className="page-subtitle">
+                    Monitor and manage your infrastructure from one place.
+                  </p>
                 </div>
 
-                <div className="chart-value purple-text">
-                  {metrics ? `${metrics.cpu_usage}%` : '--'}
+                <button
+                  className="refresh-button"
+                  onClick={FetchMetrics}
+                >
+                  <RefreshCw size={16} />
+                  Refresh
+                </button>
+
+              </div>
+
+
+              {/* Server Status */}
+
+              <div className="server-status-card">
+
+                <div className="server-status-left">
+
+                  <div className="server-icon">
+                    <Server size={23} />
+                  </div>
+
+                  <div>
+                    <h3>Ubuntu Server</h3>
+                    <p>Local development environment</p>
+                  </div>
+
                 </div>
 
-              </div>
+                <div className="server-status-right">
 
-              <div className="chart-container">
+                  <span className={`status-badge ${error ? 'offline' : ''}`}>
 
-                <ResponsiveContainer width="100%" height="100%">
+                    {error ? (
+                      <CircleAlert size={13} />
+                    ) : (
+                      <CircleCheck size={13} />
+                    )}
 
-                  <AreaChart data={history}>
+                    {loading
+                      ? 'Connecting...'
+                      : error
+                        ? 'Disconnected'
+                        : 'Connected'}
 
-                    <defs>
-                      <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#9875ff" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#9875ff" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-
-                    <CartesianGrid stroke="#252a3a" strokeDasharray="4 4" />
-
-                    <XAxis
-                      dataKey="time"
-                      stroke="#85899b"
-                      tick={{ fontSize: 10 }}
-                      minTickGap={25}
-                    />
-
-                    <YAxis
-                      domain={[0, 100]}
-                      stroke="#85899b"
-                      tick={{ fontSize: 11 }}
-                    />
-
-                    <Tooltip
-                      contentStyle={{
-                        background: '#171b29',
-                        border: '1px solid #34394b',
-                        borderRadius: '8px',
-                        color: '#ffffff',
-                      }}
-                    />
-
-                    <Area
-                      type="monotone"
-                      dataKey="cpu"
-                      stroke="#9875ff"
-                      strokeWidth={2}
-                      fill="url(#cpuGradient)"
-                      isAnimationActive={false}
-                    />
-
-                  </AreaChart>
-
-                </ResponsiveContainer>
-
-              </div>
-
-            </div>
-
-
-            <div className="chart-card">
-
-              <div className="chart-header">
-
-                <div>
-                  <h3>Memory Performance</h3>
-                  <p>Recent RAM utilization</p>
-                </div>
-
-                <div className="chart-value blue-text">
-                  {metrics ? `${metrics.memory.usage_percent}%` : '--'}
-                </div>
-
-              </div>
-
-              <div className="chart-container">
-
-                <ResponsiveContainer width="100%" height="100%">
-
-                  <AreaChart data={history}>
-
-                    <defs>
-                      <linearGradient id="ramGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#4b9eff" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#4b9eff" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-
-                    <CartesianGrid stroke="#252a3a" strokeDasharray="4 4" />
-
-                    <XAxis
-                      dataKey="time"
-                      stroke="#85899b"
-                      tick={{ fontSize: 10 }}
-                      minTickGap={25}
-                    />
-
-                    <YAxis
-                      domain={[0, 100]}
-                      stroke="#85899b"
-                      tick={{ fontSize: 11 }}
-                    />
-
-                    <Tooltip
-                      contentStyle={{
-                        background: '#171b29',
-                        border: '1px solid #34394b',
-                        borderRadius: '8px',
-                        color: '#ffffff',
-                      }}
-                    />
-
-                    <Area
-                      type="monotone"
-                      dataKey="ram"
-                      stroke="#4b9eff"
-                      strokeWidth={2}
-                      fill="url(#ramGradient)"
-                      isAnimationActive={false}
-                    />
-
-                  </AreaChart>
-
-                </ResponsiveContainer>
-
-              </div>
-
-            </div>
-
-          </div>
-
-
-          {/* Bottom Information */}
-
-          <div className="bottom-grid">
-
-            <div className="info-card">
-
-              <div className="info-heading">
-                <HardDrive size={19} />
-                <h3>Storage Information</h3>
-              </div>
-
-              <div className="storage-details">
-
-                <div className="storage-numbers">
-                  <strong>
-                    {metrics ? `${metrics.disk.used_gb} GB` : '--'}
-                  </strong>
-
-                  <span>
-                    of {metrics ? `${metrics.disk.total_gb} GB` : '--'}
                   </span>
-                </div>
 
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${metrics ? metrics.disk.usage_percent : 0}%`
-                    }}
-                  ></div>
-                </div>
+                  <span className="server-address">
+                    127.0.0.1:8000
+                  </span>
 
-                <p>
-                  {metrics
-                    ? `${metrics.disk.free_gb} GB available`
-                    : 'Waiting for server data'}
-                </p>
+                </div>
 
               </div>
+
+
+              {/* Statistics */}
+
+              <div className="section-heading">
+
+                <div>
+                  <h2>Server Overview</h2>
+                  <p>Current resource utilization</p>
+                </div>
+
+                <span className="live-indicator">
+                  <span></span>
+                  LIVE MONITORING
+                </span>
+
+              </div>
+
+
+              <div className="stats-grid">
+
+                <StatCard
+                  title="CPU Usage"
+                  value={metrics ? metrics.cpu_usage : '--'}
+                  unit="%"
+                  icon={Cpu}
+                  description="Processor utilization"
+                  color="purple"
+                />
+
+                <StatCard
+                  title="Memory Usage"
+                  value={metrics ? metrics.memory.usage_percent : '--'}
+                  unit="%"
+                  icon={Activity}
+                  description={
+                    metrics
+                      ? `${metrics.memory.used_gb} GB / ${metrics.memory.total_gb} GB`
+                      : 'Waiting for data'
+                  }
+                  color="blue"
+                />
+
+                <StatCard
+                  title="Disk Usage"
+                  value={metrics ? metrics.disk.usage_percent : '--'}
+                  unit="%"
+                  icon={HardDrive}
+                  description={
+                    metrics
+                      ? `${metrics.disk.free_gb} GB free`
+                      : 'Waiting for data'
+                  }
+                  color="orange"
+                />
+
+                <StatCard
+                  title="System Uptime"
+                  value={
+                    metrics
+                      ? formatUptime(metrics.uptime.uptime_seconds)
+                      : '--'
+                  }
+                  unit=""
+                  icon={Clock}
+                  description="Server running time"
+                  color="green"
+                />
+
+              </div>
+
+
+              {/* Charts */}
+
+              <div className="charts-grid">
+
+                <div className="chart-card">
+
+                  <div className="chart-header">
+
+                    <div>
+                      <h3>CPU Performance</h3>
+                      <p>Recent processor utilization</p>
+                    </div>
+
+                    <div className="chart-value purple-text">
+                      {metrics ? `${metrics.cpu_usage}%` : '--'}
+                    </div>
+
+                  </div>
+
+                  <div className="chart-container">
+
+                    <ResponsiveContainer width="100%" height="100%">
+
+                      <AreaChart data={history}>
+
+                        <defs>
+                          <linearGradient
+                            id="cpuGradient"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop offset="0%" stopColor="#9875ff" stopOpacity={0.35} />
+                            <stop offset="100%" stopColor="#9875ff" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+
+                        <CartesianGrid stroke="#252a3a" strokeDasharray="4 4" />
+
+                        <XAxis
+                          dataKey="time"
+                          stroke="#85899b"
+                          tick={{ fontSize: 10 }}
+                          minTickGap={25}
+                        />
+
+                        <YAxis
+                          domain={[0, 100]}
+                          stroke="#85899b"
+                          tick={{ fontSize: 11 }}
+                        />
+
+                        <Tooltip />
+
+                        <Area
+                          type="monotone"
+                          dataKey="cpu"
+                          stroke="#9875ff"
+                          strokeWidth={2}
+                          fill="url(#cpuGradient)"
+                          isAnimationActive={false}
+                        />
+
+                      </AreaChart>
+
+                    </ResponsiveContainer>
+
+                  </div>
+
+                </div>
+
+
+                <div className="chart-card">
+
+                  <div className="chart-header">
+
+                    <div>
+                      <h3>Memory Performance</h3>
+                      <p>Recent RAM utilization</p>
+                    </div>
+
+                    <div className="chart-value blue-text">
+                      {metrics ? `${metrics.memory.usage_percent}%` : '--'}
+                    </div>
+
+                  </div>
+
+                  <div className="chart-container">
+
+                    <ResponsiveContainer width="100%" height="100%">
+
+                      <AreaChart data={history}>
+
+                        <defs>
+                          <linearGradient
+                            id="ramGradient"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop offset="0%" stopColor="#4b9eff" stopOpacity={0.35} />
+                            <stop offset="100%" stopColor="#4b9eff" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+
+                        <CartesianGrid stroke="#252a3a" strokeDasharray="4 4" />
+
+                        <XAxis
+                          dataKey="time"
+                          stroke="#85899b"
+                          tick={{ fontSize: 10 }}
+                          minTickGap={25}
+                        />
+
+                        <YAxis
+                          domain={[0, 100]}
+                          stroke="#85899b"
+                          tick={{ fontSize: 11 }}
+                        />
+
+                        <Tooltip />
+
+                        <Area
+                          type="monotone"
+                          dataKey="ram"
+                          stroke="#4b9eff"
+                          strokeWidth={2}
+                          fill="url(#ramGradient)"
+                          isAnimationActive={false}
+                        />
+
+                      </AreaChart>
+
+                    </ResponsiveContainer>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+
+              {/* Storage and Network */}
+
+              <div className="bottom-grid">
+
+                <div className="info-card">
+
+                  <div className="info-heading">
+                    <HardDrive size={19} />
+                    <h3>Storage Information</h3>
+                  </div>
+
+                  <div className="storage-details">
+
+                    <div className="storage-numbers">
+
+                      <strong>
+                        {metrics ? `${metrics.disk.used_gb} GB` : '--'}
+                      </strong>
+
+                      <span>
+                        of {metrics ? `${metrics.disk.total_gb} GB` : '--'}
+                      </span>
+
+                    </div>
+
+                    <div className="progress-bar">
+
+                      <div
+                        className="progress-fill"
+                        style={{
+                          width: `${metrics ? metrics.disk.usage_percent : 0}%`,
+                        }}
+                      ></div>
+
+                    </div>
+
+                    <p>
+                      {metrics
+                        ? `${metrics.disk.free_gb} GB available`
+                        : 'Waiting for server data'}
+                    </p>
+
+                  </div>
+
+                </div>
+
+
+                <div className="info-card">
+
+                  <div className="info-heading">
+                    <Wifi size={19} />
+                    <h3>Network Statistics</h3>
+                  </div>
+
+                  <div className="network-details">
+
+                    <div className="network-row">
+
+                      <div className="network-label">
+                        <ArrowUpRight size={17} />
+                        <span>Data Sent</span>
+                      </div>
+
+                      <strong>
+                        {metrics ? `${metrics.network.sent_mb} MB` : '--'}
+                      </strong>
+
+                    </div>
+
+                    <div className="network-row">
+
+                      <div className="network-label">
+                        <ArrowDownRight size={17} />
+                        <span>Data Received</span>
+                      </div>
+
+                      <strong>
+                        {metrics ? `${metrics.network.received_mb} MB` : '--'}
+                      </strong>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </>
+
+
+          ) : (
+
+            <div className="placeholder-page">
+
+              <h2>{activePage}</h2>
+
+              <p>
+                This CloudOS module is planned for a future development stage.
+              </p>
 
             </div>
 
-
-            <div className="info-card">
-
-              <div className="info-heading">
-                <Wifi size={19} />
-                <h3>Network Statistics</h3>
-              </div>
-
-              <div className="network-details">
-
-                <div className="network-row">
-
-                  <div className="network-label">
-                    <ArrowUpRight size={17} />
-                    <span>Data Sent</span>
-                  </div>
-
-                  <strong>
-                    {metrics ? `${metrics.network.sent_mb} MB` : '--'}
-                  </strong>
-
-                </div>
-
-                <div className="network-row">
-
-                  <div className="network-label">
-                    <ArrowDownRight size={17} />
-                    <span>Data Received</span>
-                  </div>
-
-                  <strong>
-                    {metrics ? `${metrics.network.received_mb} MB` : '--'}
-                  </strong>
-
-                </div>
-
-              </div>
-
-            </div>
-
-          </div>
+          )}
 
 
           <footer className="footer">
