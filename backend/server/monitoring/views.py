@@ -60,8 +60,8 @@ def ServerList(request):
         )
 
 
-# Server Details and Delete API
-@api_view(['GET', 'DELETE'])
+# Server Details, Update and Delete API
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
 @renderer_classes([JSONRenderer])
 def ServerDetail(request, pk):
 
@@ -71,8 +71,26 @@ def ServerDetail(request, pk):
         serializer = ServerSerializer(server)
         return Response(serializer.data)
 
+    elif request.method in ['PUT', 'PATCH']:
+
+        serializer = ServerSerializer(
+            server,
+            data=request.data,
+            partial=(request.method == 'PATCH')
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     elif request.method == 'DELETE':
         server.delete()
+
         return Response(
             {"message": "Server deleted successfully."},
             status=status.HTTP_200_OK

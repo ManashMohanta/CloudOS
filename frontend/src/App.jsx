@@ -22,6 +22,7 @@ import {
   Plus,
   Trash2,
   X,
+  Pencil,
 } from 'lucide-react'
 
 import {
@@ -52,8 +53,11 @@ function App() {
   const [serverError, setServerError] = useState('')
 
   const [showForm, setShowForm] = useState(false)
-
   const [selectedServer, setSelectedServer] = useState(null)
+
+  // Stores the ID of the server being edited.
+  // Null means we are adding a new server.
+  const [editingServerId, setEditingServerId] = useState(null)
 
   const [formData, setFormData] = useState({
     name: '',
@@ -172,18 +176,76 @@ function App() {
   }
 
 
-  // Register New Server
-  async function AddServer(event) {
+  // Reset Form
+  function ResetForm() {
+
+    setFormData({
+      name: '',
+      host: '',
+      port: 22,
+      environment: 'Development',
+    })
+
+    setEditingServerId(null)
+    setShowForm(false)
+
+  }
+
+
+  // Open Add Server Form
+  function OpenAddForm() {
+
+    setFormData({
+      name: '',
+      host: '',
+      port: 22,
+      environment: 'Development',
+    })
+
+    setEditingServerId(null)
+    setServerError('')
+    setShowForm(true)
+
+  }
+
+
+  // Open Edit Server Form
+  function EditServer(server) {
+
+    setFormData({
+      name: server.name,
+      host: server.host,
+      port: server.port,
+      environment: server.environment,
+    })
+
+    setEditingServerId(server.id)
+    setServerError('')
+    setShowForm(true)
+
+  }
+
+
+  // Add or Update Server
+  async function SaveServer(event) {
 
     event.preventDefault()
 
     setServerError('')
 
+    const isEditing = editingServerId !== null
+
+    const url = isEditing
+      ? `/api/servers/${editingServerId}/`
+      : '/api/servers/'
+
+    const method = isEditing ? 'PUT' : 'POST'
+
     try {
 
-      const response = await fetch('/api/servers/', {
+      const response = await fetch(url, {
 
-        method: 'POST',
+        method: method,
 
         headers: {
           'Content-Type': 'application/json',
@@ -199,27 +261,41 @@ function App() {
       const data = await response.json()
 
       if (!response.ok) {
-
         throw new Error(JSON.stringify(data))
+      }
+
+      if (isEditing) {
+
+        // Update existing server in React state
+        setServers(previous =>
+          previous.map(server =>
+            server.id === data.id ? data : server
+          )
+        )
+
+        // Update currently selected server details
+        setSelectedServer(previous =>
+          previous?.id === data.id ? data : previous
+        )
+
+      } else {
+
+        // Add new server to the list
+        setServers(previous => [data, ...previous])
 
       }
 
-      setServers(previous => [data, ...previous])
-
-      setFormData({
-        name: '',
-        host: '',
-        port: 22,
-        environment: 'Development',
-      })
-
-      setShowForm(false)
+      ResetForm()
 
     } catch (err) {
 
-      console.error('Server registration error:', err)
+      console.error('Server save error:', err)
 
-      setServerError('Server registration failed. Check the entered details.')
+      setServerError(
+        isEditing
+          ? 'Server update failed. Check the entered details.'
+          : 'Server registration failed. Check the entered details.'
+      )
 
     }
 
@@ -456,7 +532,7 @@ function App() {
 
                 <button
                   className="add-server-button"
-                  onClick={() => setShowForm(true)}
+                  onClick={OpenAddForm}
                 >
                   <Plus size={17} />
                   Add Server
@@ -492,7 +568,7 @@ function App() {
               )}
 
 
-              {/* Add Server Form */}
+              {/* Add / Edit Server Form */}
 
               {showForm && (
 
@@ -501,13 +577,22 @@ function App() {
                   <div className="form-heading">
 
                     <div>
-                      <h2>Register New Server</h2>
-                      <p>Enter the server information below.</p>
+                      <h2>
+                        {editingServerId !== null
+                          ? 'Edit Server'
+                          : 'Register New Server'}
+                      </h2>
+
+                      <p>
+                        {editingServerId !== null
+                          ? 'Update the server information below.'
+                          : 'Enter the server information below.'}
+                      </p>
                     </div>
 
                     <button
                       className="close-form-button"
-                      onClick={() => setShowForm(false)}
+                      onClick={ResetForm}
                     >
                       <X size={20} />
                     </button>
@@ -515,7 +600,7 @@ function App() {
                   </div>
 
 
-                  <form onSubmit={AddServer}>
+                  <form onSubmit={SaveServer}>
 
                     <div className="form-grid">
 
@@ -594,7 +679,7 @@ function App() {
                       <button
                         type="button"
                         className="cancel-button"
-                        onClick={() => setShowForm(false)}
+                        onClick={ResetForm}
                       >
                         Cancel
                       </button>
@@ -603,7 +688,9 @@ function App() {
                         type="submit"
                         className="submit-server-button"
                       >
-                        Register Server
+                        {editingServerId !== null
+                          ? 'Update Server'
+                          : 'Register Server'}
                       </button>
 
                     </div>
@@ -712,6 +799,15 @@ function App() {
                                   onClick={() => setSelectedServer(server)}
                                 >
                                   Details
+                                </button>
+
+                                <button
+                                  className="view-server-button"
+                                  onClick={() => EditServer(server)}
+                                  title="Edit Server"
+                                >
+                                  <Pencil size={14} />
+                                  Edit
                                 </button>
 
                                 <button
