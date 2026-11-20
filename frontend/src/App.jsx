@@ -51,12 +51,10 @@ function App() {
   const [servers, setServers] = useState([])
   const [serverLoading, setServerLoading] = useState(false)
   const [serverError, setServerError] = useState('')
+  const [serverHealth, setServerHealth] = useState({})
 
   const [showForm, setShowForm] = useState(false)
   const [selectedServer, setSelectedServer] = useState(null)
-
-  // Stores the ID of the server being edited.
-  // Null means we are adding a new server.
   const [editingServerId, setEditingServerId] = useState(null)
 
   const [formData, setFormData] = useState({
@@ -109,6 +107,53 @@ function App() {
   }
 
 
+  // Fetch Health Status of Registered Servers
+  async function FetchAllServerHealth(serverList) {
+
+    const healthResults = {}
+
+    await Promise.all(
+
+      serverList.map(async (server) => {
+
+        try {
+
+          const response = await fetch(
+            `/api/servers/${server.id}/health/`
+          )
+
+          if (!response.ok) {
+            throw new Error('Health check failed')
+          }
+
+          const data = await response.json()
+
+          healthResults[server.id] = data
+
+        } catch (err) {
+
+          console.error(
+            `Health check failed for server ${server.id}:`,
+            err
+          )
+
+          healthResults[server.id] = {
+            status: 'Unknown',
+            host: server.host,
+            port: server.port,
+          }
+
+        }
+
+      })
+
+    )
+
+    setServerHealth(healthResults)
+
+  }
+
+
   // Fetch Registered Servers
   async function FetchServers() {
 
@@ -126,11 +171,17 @@ function App() {
       const data = await response.json()
 
       setServers(data)
+      setServerHealth({})
+
+      await FetchAllServerHealth(data)
 
     } catch (err) {
 
       console.error('Server API error:', err)
-      setServerError('Unable to load servers. Check Django backend.')
+
+      setServerError(
+        'Unable to load servers. Check Django backend.'
+      )
 
     } finally {
 
@@ -245,7 +296,7 @@ function App() {
 
       const response = await fetch(url, {
 
-        method: method,
+        method,
 
         headers: {
           'Content-Type': 'application/json',
@@ -266,22 +317,32 @@ function App() {
 
       if (isEditing) {
 
-        // Update existing server in React state
         setServers(previous =>
           previous.map(server =>
             server.id === data.id ? data : server
           )
         )
 
-        // Update currently selected server details
+        setServerHealth(previous => {
+          const updated = { ...previous }
+          delete updated[data.id]
+          return updated
+        })
+
         setSelectedServer(previous =>
           previous?.id === data.id ? data : previous
         )
 
       } else {
 
-        // Add new server to the list
         setServers(previous => [data, ...previous])
+
+        setServerHealth(previous => ({
+          ...previous,
+          [data.id]: {
+            status: 'Unknown',
+          },
+        }))
 
       }
 
@@ -324,6 +385,12 @@ function App() {
       setServers(previous =>
         previous.filter(server => server.id !== id)
       )
+
+      setServerHealth(previous => {
+        const updated = { ...previous }
+        delete updated[id]
+        return updated
+      })
 
       if (selectedServer?.id === id) {
         setSelectedServer(null)
@@ -390,8 +457,6 @@ function App() {
     </div>
 
   )
-
-
   return (
 
     <div className="dashboard">
@@ -627,7 +692,7 @@ function App() {
                         <input
                           type="text"
                           name="host"
-                          placeholder="Example: 192.168.1.10"
+                          placeholder="Example: 127.0.0.1"
                           value={formData.host}
                           onChange={HandleInput}
                           required
@@ -716,6 +781,7 @@ function App() {
                   <button
                     className="table-refresh-button"
                     onClick={FetchServers}
+                    disabled={serverLoading}
                   >
                     <RefreshCw size={15} />
                     Refresh
@@ -762,69 +828,90 @@ function App() {
 
                       <tbody>
 
-                        {servers.map(server => (
+                        {servers.map(server => {
 
-                          <tr key={server.id}>
+                          const status =
+                            serverHealth[server.id]?.status || 'Unknown'
 
-                            <td>
-                              <div className="server-name-cell">
-                                <Server size={17} />
-                                <strong>{server.name}</strong>
-                              </div>
-                            </td>
+                          return (
 
-                            <td>{server.host}</td>
+                            <tr key={server.id}>
 
-                            <td>{server.port}</td>
+                              <td>
+                                <div className="server-name-cell">
+                                  <Server size={17} />
+                                  <strong>{server.name}</strong>
+                                </div>
+                              </td>
 
-                            <td>
-                              <span className="environment-badge">
-                                {server.environment}
-                              </span>
-                            </td>
+                              <td>{server.host}</td>
 
-                            <td>
-                              <span className="registered-badge">
-                                <CircleCheck size={13} />
-                                Registered
-                              </span>
-                            </td>
+                              <td>{server.port}</td>
 
-                            <td>
+                              <td>
+                                <span className="environment-badge">
+                                  {server.environment}
+                                </span>
+                              </td>
 
-                              <div className="server-actions">
+                              <td>
 
-                                <button
-                                  className="view-server-button"
-                                  onClick={() => setSelectedServer(server)}
+                                <span
+                                  className={`health-badge ${status.toLowerCase()}`}
                                 >
-                                  Details
-                                </button>
 
-                                <button
-                                  className="view-server-button"
-                                  onClick={() => EditServer(server)}
-                                  title="Edit Server"
-                                >
-                                  <Pencil size={14} />
-                                  Edit
-                                </button>
+                                  {status === 'Online' ? (
+                                    <CircleCheck size={13} />
+                                  ) : status === 'Offline' ? (
+                                    <CircleAlert size={13} />
+                                  ) : (
+                                    <Clock size={13} />
+                                  )}
 
-                                <button
-                                  className="delete-server-button"
-                                  onClick={() => DeleteServer(server.id)}
-                                  title="Delete Server"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
+                                  {status}
 
-                              </div>
+                                </span>
 
-                            </td>
+                              </td>
 
-                          </tr>
 
-                        ))}
+                              <td>
+
+                                <div className="server-actions">
+
+                                  <button
+                                    className="view-server-button"
+                                    onClick={() => setSelectedServer(server)}
+                                  >
+                                    Details
+                                  </button>
+
+                                  <button
+                                    className="view-server-button"
+                                    onClick={() => EditServer(server)}
+                                    title="Edit Server"
+                                  >
+                                    <Pencil size={14} />
+                                    Edit
+                                  </button>
+
+                                  <button
+                                    className="delete-server-button"
+                                    onClick={() => DeleteServer(server.id)}
+                                    title="Delete Server"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+
+                                </div>
+
+                              </td>
+
+                            </tr>
+
+                          )
+
+                        })}
 
                       </tbody>
 
@@ -884,6 +971,13 @@ function App() {
                     <div>
                       <span>Environment</span>
                       <strong>{selectedServer.environment}</strong>
+                    </div>
+
+                    <div>
+                      <span>Health Status</span>
+                      <strong>
+                        {serverHealth[selectedServer.id]?.status || 'Unknown'}
+                      </strong>
                     </div>
 
                     <div>

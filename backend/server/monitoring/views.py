@@ -16,6 +16,7 @@ from backend.agent.metrics import GetSystemMetrics
 
 from .models import Server
 from .serializers import ServerSerializer
+from backend.agent.health_check import CheckServerHealth
 
 
 # System Information API
@@ -95,3 +96,19 @@ def ServerDetail(request, pk):
             {"message": "Server deleted successfully."},
             status=status.HTTP_200_OK
         )
+# Server Health Check API
+@api_view(['GET'])
+@renderer_classes([JSONRenderer])
+def ServerHealth(request, pk):
+
+    server = get_object_or_404(Server, pk=pk)
+
+    health_data = CheckServerHealth(
+        server.host,
+        server.port
+    )
+
+    health_data["server_id"] = server.id
+    health_data["server_name"] = server.name
+
+    return Response(health_data)
